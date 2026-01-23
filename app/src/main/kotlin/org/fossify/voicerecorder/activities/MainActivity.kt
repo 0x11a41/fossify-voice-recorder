@@ -43,7 +43,7 @@ class MainActivity : SimpleActivity() {
 
     private var bus: EventBus? = null
 
-    override var isSearchBarEnabled = true
+    override var isSearchBarEnabled = false
 
     private lateinit var binding: ActivityMainBinding
 
