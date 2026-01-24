@@ -4,6 +4,9 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
+import android.media.audiofx.AcousticEchoCanceler
+import android.media.audiofx.AutomaticGainControl
+import android.media.audiofx.NoiseSuppressor
 import android.os.ParcelFileDescriptor
 import com.naman14.androidlame.AndroidLame
 import com.naman14.androidlame.LameBuilder
@@ -27,6 +30,7 @@ class Mp3Recorder(val context: Context) : Recorder {
     private var androidLame: AndroidLame? = null
     private var fileDescriptor: ParcelFileDescriptor? = null
     private var outputStream: FileOutputStream? = null
+    private var noiseSuppressor: NoiseSuppressor? = null
     private val minBufferSize = AudioRecord.getMinBufferSize(
         context.config.samplingRate,
         AudioFormat.CHANNEL_IN_MONO,
@@ -41,6 +45,14 @@ class Mp3Recorder(val context: Context) : Recorder {
         AudioFormat.ENCODING_PCM_16BIT,
         minBufferSize * 2
     )
+
+    init {
+        val sessionId = audioRecord.audioSessionId
+        if (NoiseSuppressor.isAvailable()) {
+            noiseSuppressor = NoiseSuppressor.create(sessionId)
+            noiseSuppressor?.enabled = true
+        }
+    }
 
     override fun setOutputFile(path: String) {
         outputPath = path
@@ -114,6 +126,7 @@ class Mp3Recorder(val context: Context) : Recorder {
     override fun release() {
         androidLame?.flush(mp3buffer)
         outputStream?.close()
+        noiseSuppressor?.release()
         audioRecord.release()
     }
 
