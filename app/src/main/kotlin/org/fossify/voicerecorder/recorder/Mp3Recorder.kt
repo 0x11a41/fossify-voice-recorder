@@ -4,13 +4,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.media.AudioFormat
 import android.media.AudioRecord
-import android.media.audiofx.AcousticEchoCanceler
-import android.media.audiofx.AutomaticGainControl
-
-//noise-suppressor
+import android.media.MediaRecorder
 import android.media.audiofx.NoiseSuppressor
-
-
 import android.os.ParcelFileDescriptor
 import com.naman14.androidlame.AndroidLame
 import com.naman14.androidlame.LameBuilder
@@ -35,6 +30,7 @@ class Mp3Recorder(val context: Context) : Recorder {
     private var fileDescriptor: ParcelFileDescriptor? = null
     private var outputStream: FileOutputStream? = null
     private var noiseSuppressor: NoiseSuppressor? = null
+
     private val minBufferSize = AudioRecord.getMinBufferSize(
         context.config.samplingRate,
         AudioFormat.CHANNEL_IN_MONO,
@@ -43,15 +39,14 @@ class Mp3Recorder(val context: Context) : Recorder {
 
     @SuppressLint("MissingPermission")
     private val audioRecord = AudioRecord(
-        context.config.microphoneMode,
+        MediaRecorder.AudioSource.VOICE_COMMUNICATION,
         context.config.samplingRate,
         AudioFormat.CHANNEL_IN_MONO,
         AudioFormat.ENCODING_PCM_16BIT,
         minBufferSize * 2
     )
 
-    //noise-suppressor
-    init {
+    init { // enable noise supression
         val sessionId = audioRecord.audioSessionId
         if (NoiseSuppressor.isAvailable()) {
             noiseSuppressor = NoiseSuppressor.create(sessionId)
@@ -85,6 +80,7 @@ class Mp3Recorder(val context: Context) : Recorder {
             .setOutBitrate(context.config.bitrate / 1000)
             .setOutSampleRate(context.config.samplingRate)
             .setOutChannels(1)
+            .setQuality(1)
             .build()
 
         ensureBackgroundThread {
