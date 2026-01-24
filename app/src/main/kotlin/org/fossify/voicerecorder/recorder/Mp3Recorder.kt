@@ -6,7 +6,11 @@ import android.media.AudioFormat
 import android.media.AudioRecord
 import android.media.audiofx.AcousticEchoCanceler
 import android.media.audiofx.AutomaticGainControl
+
+//noise-suppressor
 import android.media.audiofx.NoiseSuppressor
+
+
 import android.os.ParcelFileDescriptor
 import com.naman14.androidlame.AndroidLame
 import com.naman14.androidlame.LameBuilder
@@ -46,6 +50,7 @@ class Mp3Recorder(val context: Context) : Recorder {
         minBufferSize * 2
     )
 
+    //noise-suppressor
     init {
         val sessionId = audioRecord.audioSessionId
         if (NoiseSuppressor.isAvailable()) {
