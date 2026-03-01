@@ -170,7 +170,7 @@ class SessionManager(
             val oldState = internalState
             internalState = newState
             
-            // Auto-report to server
+            // Auto-report events to server when state changes locally
             if (oldState == SessionStates.PAUSED && newState == SessionStates.RUNNING) {
                 reportResumed()
             } else {
@@ -182,7 +182,7 @@ class SessionManager(
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun onRecordingDurationChanged(event: Events.RecordingDuration) {
         internalDuration = event.duration
-        reportDuration(event.duration)
+        // Periodic duration reports removed per instruction
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
@@ -196,7 +196,7 @@ class SessionManager(
     // STATE REPORTING
     // --------------------------------------------------
 
-    fun reportStateChange(state: SessionStates) {
+    private fun reportStateChange(state: SessionStates) {
         val event = when (state) {
             SessionStates.RUNNING -> WSEvents.STARTED
             SessionStates.PAUSED -> WSEvents.PAUSED
@@ -206,27 +206,17 @@ class SessionManager(
         scope.launch {
             sessionMetadata?.id?.let { id ->
                 ws.sendEvent(event, id)
-                ws.sendStateReport(state, internalDuration)
             }
             onStateChanged?.invoke(state, internalDuration)
         }
     }
 
-    fun reportResumed() {
+    private fun reportResumed() {
         scope.launch {
             sessionMetadata?.id?.let { id ->
                 ws.sendEvent(WSEvents.RESUMED, id)
-                ws.sendStateReport(SessionStates.RUNNING, internalDuration)
             }
             onStateChanged?.invoke(SessionStates.RUNNING, internalDuration)
-        }
-    }
-
-    fun reportDuration(duration: Int) {
-        scope.launch {
-            sessionMetadata?.id?.let {
-                ws.sendStateReport(internalState, duration)
-            }
         }
     }
 
