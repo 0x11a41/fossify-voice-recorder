@@ -75,7 +75,9 @@ class MainActivity : SimpleActivity() {
         }
 
         bus = EventBus.getDefault()
-        bus!!.register(this)
+        if (bus?.isRegistered(this) == false) {
+            bus!!.register(this)
+        }
         if (config.recordAfterLaunch && !RecorderService.isRunning) {
             Intent(this@MainActivity, RecorderService::class.java).apply {
                 try {
@@ -328,5 +330,11 @@ class MainActivity : SimpleActivity() {
             }
             finish()
         }
+    }
+
+    @Suppress("unused")
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun recordingStatusChanged(event: Events.RecordingStatus) {
+        // Just for safety, ensure NetworkFragment or others can react
     }
 }

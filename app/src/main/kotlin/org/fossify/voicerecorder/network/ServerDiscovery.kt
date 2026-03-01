@@ -17,106 +17,103 @@ data class DiscoveredServer(
 )
 
 class ServerDiscovery(context: Context) {
-    private val nsdManager: NsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
-    private val discoveredServers = mutableMapOf<String, DiscoveredServer>()
+    private val nsdManager = context.getSystemService(Context.NSD_SERVICE) as NsdManager
+    suspend fun discoverServers(timeoutMs: Long = 3000): List<DiscoveredServer> =
+        suspendCancellableCoroutine { cont ->
+            val results = mutableMapOf<String, DiscoveredServer>()
+            val lock = Any()
 
-    suspend fun discoverServers(timeoutMs: Long = 3000): List<DiscoveredServer> {
-        return suspendCancellableCoroutine { continuation ->
-            discoveredServers.clear()
+            val resolveListener = object : NsdManager.ResolveListener {
+                override fun onResolveFailed(info: NsdServiceInfo, code: Int) {
+                    Log.e(TAG, "Resolve failed: $code")
+                }
 
-            val listener = object : NsdManager.DiscoveryListener {
-                override fun onStartDiscoveryFailed(serviceType: String, errorCode: Int) {
-                    Log.e(TAG, "Discovery start failed: $errorCode")
-                    if (continuation.isActive) {
-                        continuation.resume(emptyList())
+                override fun onServiceResolved(info: NsdServiceInfo) {
+                    val host = info.host?.hostAddress ?: return
+                    val port = info.port
+                    val name = info.serviceName
+                        .removePrefix("_vocalink._tcp.local.")
+                        .removeSuffix(".")
+                    synchronized(lock) {
+                        results[info.serviceName] =
+                            DiscoveredServer(
+                                name = name,
+                                ip = host,
+                                port = port,
+                                baseUrl = "http://$host:$port"
+                            )
+                    }
+                }
+            }
+
+            val discoveryListener =
+                object : NsdManager.DiscoveryListener {
+                    override fun onStartDiscoveryFailed(t: String, code: Int) {
+                        Log.e(TAG, "Start failed: $code")
+                        stop()
+                        if (cont.isActive) cont.resume(emptyList())
+                    }
+
+                    override fun onStopDiscoveryFailed(t: String, code: Int) {
+                        Log.e(TAG, "Stop failed: $code")
+                    }
+
+                    override fun onDiscoveryStarted(t: String) {
+                        Log.d(TAG, "Discovery started")
+                    }
+
+                    override fun onDiscoveryStopped(t: String) {
+                        Log.d(TAG, "Discovery stopped")
+                    }
+
+                    override fun onServiceFound(info: NsdServiceInfo) {
+                        nsdManager.resolveService(info, resolveListener)
+                    }
+
+                    override fun onServiceLost(info: NsdServiceInfo) {
+                        synchronized(lock) {
+                            results.remove(info.serviceName)
+                        }
+                    }
+                    fun stop() {
+                        try {
+                            nsdManager.stopServiceDiscovery(this)
+                        } catch (_: Exception) {}
                     }
                 }
 
-                override fun onStopDiscoveryFailed(serviceType: String, errorCode: Int) {
-                    Log.e(TAG, "Discovery stop failed: $errorCode")
-                }
-
-                override fun onDiscoveryStarted(serviceType: String) {
-                    Log.d(TAG, "Discovery started")
-                }
-
-                override fun onDiscoveryStopped(serviceType: String) {
-                    Log.d(TAG, "Discovery stopped")
-                }
-
-                override fun onServiceFound(serviceInfo: NsdServiceInfo) {
-                    Log.d(TAG, "Service found: ${serviceInfo.serviceName}")
-                    resolveService(serviceInfo)
-                }
-
-                override fun onServiceLost(serviceInfo: NsdServiceInfo) {
-                    Log.d(TAG, "Service lost: ${serviceInfo.serviceName}")
-                    discoveredServers.remove(serviceInfo.serviceName)
-                }
-            }
-
             try {
-                nsdManager.discoverServices("_vocalink._tcp.", NsdManager.PROTOCOL_DNS_SD, listener)
-            } catch (e: Exception) {
-                Log.e(TAG, "Error starting discovery", e)
-                if (continuation.isActive) {
-                    continuation.resume(emptyList())
-                }
-            }
-
-            // Stop discovery after timeout
-            val handler = Handler(Looper.getMainLooper())
-            val timeoutRunnable = Runnable {
-                try {
-                    nsdManager.stopServiceDiscovery(listener)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error stopping discovery", e)
-                }
-                if (continuation.isActive) {
-                    continuation.resume(discoveredServers.values.toList())
-                }
-            }
-            handler.postDelayed(timeoutRunnable, timeoutMs)
-
-            continuation.invokeOnCancellation {
-                handler.removeCallbacks(timeoutRunnable)
-                try {
-                    nsdManager.stopServiceDiscovery(listener)
-                } catch (e: Exception) {
-                    Log.e(TAG, "Error cancelling discovery", e)
-                }
-            }
-        }
-    }
-
-    private fun resolveService(serviceInfo: NsdServiceInfo) {
-        val listener = object : NsdManager.ResolveListener {
-            override fun onResolveFailed(serviceInfo: NsdServiceInfo, errorCode: Int) {
-                Log.e(TAG, "Resolve failed: $errorCode")
-            }
-
-            override fun onServiceResolved(serviceInfo: NsdServiceInfo) {
-                Log.d(TAG, "Service resolved: ${serviceInfo.serviceName}")
-                val host = serviceInfo.host?.hostAddress ?: return
-                val port = serviceInfo.port
-                val name = serviceInfo.serviceName.removePrefix("_vocalink._tcp.local.").removeSuffix(".")
-
-                val server = DiscoveredServer(
-                    name = name,
-                    ip = host,
-                    port = port,
-                    baseUrl = "http://$host:$port"
+                nsdManager.discoverServices(
+                    "_vocalink._tcp.",
+                    NsdManager.PROTOCOL_DNS_SD,
+                    discoveryListener
                 )
-                discoveredServers[serviceInfo.serviceName] = server
+            } catch (e: Exception) {
+                Log.e(TAG, "Discover error", e)
+                cont.resume(emptyList())
+                return@suspendCancellableCoroutine
+            }
+
+            val handler = Handler(Looper.getMainLooper())
+
+            val timeout = Runnable {
+                discoveryListener.stop()
+
+                val list = synchronized(lock) {
+                    results.values.toList()
+                }
+
+                if (cont.isActive)
+                    cont.resume(list)
+            }
+
+            handler.postDelayed(timeout, timeoutMs)
+
+            cont.invokeOnCancellation {
+                handler.removeCallbacks(timeout)
+                discoveryListener.stop()
             }
         }
-
-        try {
-            nsdManager.resolveService(serviceInfo, listener)
-        } catch (e: Exception) {
-            Log.e(TAG, "Error resolving service", e)
-        }
-    }
 
     companion object {
         private const val TAG = "ServerDiscovery"

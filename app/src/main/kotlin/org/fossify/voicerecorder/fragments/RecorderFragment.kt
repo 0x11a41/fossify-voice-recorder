@@ -74,7 +74,9 @@ class RecorderFragment(
         setupColors()
         binding.recorderVisualizer.recreate()
         bus = EventBus.getDefault()
-        bus!!.register(this)
+        if (bus?.isRegistered(this) == false) {
+            bus!!.register(this)
+        }
 
         updateRecordingDuration(0)
         binding.toggleRecordingButton.setDebouncedClickListener {
@@ -245,6 +247,13 @@ class RecorderFragment(
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun gotStatusEvent(event: Events.RecordingStatus) {
         status = event.status
+        refreshView()
+    }
+
+    @Suppress("unused")
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun onRecordingCompleted(event: Events.RecordingCompleted) {
+        status = RECORDING_STOPPED
         refreshView()
     }
 

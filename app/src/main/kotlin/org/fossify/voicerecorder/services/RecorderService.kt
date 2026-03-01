@@ -207,8 +207,8 @@ class RecorderService : Service() {
     }
 
     private fun broadcastRecorderInfo() {
-        broadcastDuration()
         broadcastStatus()
+        broadcastDuration()
         startAmplitudeUpdates()
     }
 

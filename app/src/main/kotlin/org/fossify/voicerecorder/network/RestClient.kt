@@ -16,12 +16,8 @@ class RestClient {
         .writeTimeout(10, TimeUnit.SECONDS)
         .build()
 
-    private fun <T> httpError(code: Int, msg: String): Result<T> =
-        Result.failure(Exception("HTTP $code: $msg"))
-
-    private fun <T> emptyBodyError(): Result<T> =
-        Result.failure(Exception("Empty response body"))
-
+    private fun <T> httpError(code: Int, msg: String): Result<T> = Result.failure(Exception("HTTP $code: $msg"))
+    private fun <T> emptyBodyError(): Result<T> = Result.failure(Exception("Empty response body"))
 
     suspend fun stageSession(
         baseUrl: String,
@@ -57,7 +53,6 @@ class RestClient {
 
                 Result.success(WS_JSON.decodeFromString<SessionMetadata>(body))
             }
-
         } catch (e: Exception) {
             Result.failure(e)
         }

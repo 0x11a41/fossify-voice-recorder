@@ -2,8 +2,6 @@ package org.fossify.voicerecorder.network
 
 import android.util.Log
 import kotlinx.coroutines.*
-import kotlinx.serialization.decodeFromString
-import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.*
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -25,11 +23,18 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
     private var syncInProgress = false
     var onSessionActivated: ((SessionMetadata) -> Unit)? = null
     var onSessionUpdate: ((SessionMetadata) -> Unit)? = null
-    var onStateChanged: ((SessionStates, Int) -> Unit)? = null
     var onSessionDropped: ((String) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
     var onConnected: (() -> Unit)? = null
     var onDisconnected: (() -> Unit)? = null
+
+    // Action Callbacks
+    var onStart: (() -> Unit)? = null
+    var onStop: (() -> Unit)? = null
+    var onPause: (() -> Unit)? = null
+    var onResume: (() -> Unit)? = null
+    var onCancel: (() -> Unit)? = null
+    var onGetState: (() -> Unit)? = null
 
     fun connect(serverUrl: String, sessionId: String, sessionName: String) {
         this.sessionId = sessionId
@@ -57,15 +62,29 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
     override fun onMessage(webSocket: WebSocket, text: String) {
         scope.launch {
             try {
-                when (val msg = WS_JSON.decodeFromString<WSMessage>(text)) {
-                    is WSEventMessage -> handleEvent(msg)
-                    is WSClockSyncMessage -> handleSync(msg)
-                    is WSErrorMessage -> onError?.invoke(msg.message ?: msg.error.name)
-                    else -> {}
+                val payload = WS_JSON.decodeFromString<WSPayload>(text)
+                
+                when (payload.kind) {
+                    WSKind.EVENT -> {
+                        val event = try { WSEvents.valueOf(payload.msgType.uppercase()) } catch (_: Exception) { null }
+                        if (event != null) handleEvent(event, payload.body)
+                    }
+                    WSKind.SYNC -> {
+                        val type = try { WSClockSync.valueOf(payload.msgType.uppercase()) } catch (_: Exception) { null }
+                        if (type != null) handleSync(type, payload.body ?: JsonNull)
+                    }
+                    WSKind.ACTION -> {
+                        val action = try { WSActions.valueOf(payload.msgType.uppercase()) } catch (_: Exception) { null }
+                        if (action != null) handleAction(action)
+                    }
+                    WSKind.ERROR -> {
+                        val error = try { WSErrors.valueOf(payload.msgType.uppercase()) } catch (_: Exception) { null }
+                        onError?.invoke(error?.name ?: payload.msgType)
+                    }
                 }
 
             } catch (e: Exception) {
-                Log.e(TAG, "Parse error", e)
+                Log.e(TAG, "Parse error: ${e.message}", e)
             }
         }
     }
@@ -83,29 +102,28 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
     // ---------- Send ----------
 
     private suspend fun sendSessionActivation() {
-        send(WSEventMessage(
-                event = WSEvents.SESSION_ACTIVATE,
-                body = WS_JSON.encodeToJsonElement(WSEventTarget(sessionId))
-        ))
+        sendEvent(WSEvents.SESSION_ACTIVATE, sessionId)
     }
 
     suspend fun sendAction(action: WSActions, id: String, triggerTime: Long? = null) {
-        send(WSActionMessage(
-                action = action,
-                body = WSActionTarget(id, triggerTime)
-        ))
+        val body = WS_JSON.encodeToJsonElement(WSActionTarget(id, triggerTime))
+        send(WSKind.ACTION, action.name.lowercase(), body)
     }
 
     suspend fun sendStateReport(state: SessionStates, duration: Int) {
-        send(WSEventMessage(
-                event = WSEvents.SESSION_STATE_REPORT,
-                body = WS_JSON.encodeToJsonElement(StateReport(sessionId, state, duration))
-        ))
+        val body = WS_JSON.encodeToJsonElement(StateReport(sessionId, state, duration))
+        send(WSKind.EVENT, WSEvents.SESSION_STATE_REPORT.name.lowercase(), body)
     }
 
-    private suspend fun send(message: WSMessage) {
+    suspend fun sendEvent(event: WSEvents, id: String) {
+        val body = WS_JSON.encodeToJsonElement(WSEventTarget(id))
+        send(WSKind.EVENT, event.name.lowercase(), body)
+    }
+
+    private fun send(kind: WSKind, msgType: String, body: JsonElement? = null) {
         try {
-            webSocket?.send(WS_JSON.encodeToString(message))
+            val payload = WSPayload(kind, msgType, body)
+            webSocket?.send(WS_JSON.encodeToString(payload))
         } catch (e: Exception) {
             Log.e(TAG, "Send error", e)
         }
@@ -113,10 +131,10 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
 
     // ---------- Receive Handlers ----------
 
-    private fun handleEvent(msg: WSEventMessage) {
-        val body = msg.body ?: return
+    private fun handleEvent(event: WSEvents, body: JsonElement?) {
+        if (body == null || body is JsonNull) return
 
-        when (msg.event) {
+        when (event) {
             WSEvents.SESSION_ACTIVATED -> {
                 val meta = WS_JSON.decodeFromJsonElement<SessionMetadata>(body)
                 onSessionActivated?.invoke(meta)
@@ -128,16 +146,6 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
                 onSessionUpdate?.invoke(meta)
             }
 
-            WSEvents.STARTED -> onStateChanged?.invoke(SessionStates.RUNNING, 0)
-            WSEvents.STOPPED -> onStateChanged?.invoke(SessionStates.STOPPED, 0)
-            WSEvents.PAUSED -> onStateChanged?.invoke(SessionStates.PAUSED, 0)
-            WSEvents.RESUMED -> onStateChanged?.invoke(SessionStates.RUNNING, 0)
-
-            WSEvents.SESSION_STATE_REPORT -> {
-                val report = WS_JSON.decodeFromJsonElement<StateReport>(body)
-                onStateChanged?.invoke(report.state, report.duration)
-            }
-
             WSEvents.DROPPED -> {
                 val target = WS_JSON.decodeFromJsonElement<WSEventTarget>(body)
                 onSessionDropped?.invoke(target.id)
@@ -147,24 +155,31 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
         }
     }
 
-    private fun handleSync(msg: WSClockSyncMessage) {
-        when (msg.type) {
+    private fun handleAction(action: WSActions) {
+        when (action) {
+            WSActions.START -> onStart?.invoke()
+            WSActions.STOP -> onStop?.invoke()
+            WSActions.PAUSE -> onPause?.invoke()
+            WSActions.RESUME -> onResume?.invoke()
+            WSActions.CANCEL -> onCancel?.invoke()
+            WSActions.GET_STATE -> onGetState?.invoke()
+            else -> {}
+        }
+    }
 
-            WSClockSync.TOK -> scope.launch {
-                val tok = WS_JSON.decodeFromJsonElement<ClockSyncTok>(msg.body)
+    private fun handleSync(type: WSClockSync, body: JsonElement) {
+        when (type) {
+            WSClockSync.TOK -> {
+                val tok = WS_JSON.decodeFromJsonElement<ClockSyncTok>(body)
                 val t4 = now()
 
                 val rtt = (t4 - tok.t1) - (tok.t3 - tok.t2)
                 val theta = ((tok.t2 - tok.t1) + (tok.t3 - t4)) / 2f
 
-                send(
-                    WSClockSyncMessage(
-                        type = WSClockSync.SYNC_REPORT,
-                        body = WS_JSON.encodeToJsonElement(
-                            ClockSyncReport(theta, rtt.toFloat())
-                        )
-                    )
+                val reportBody = WS_JSON.encodeToJsonElement(
+                    ClockSyncReport(theta, rtt.toFloat())
                 )
+                send(WSKind.SYNC, WSClockSync.SYNC_REPORT.name.lowercase(), reportBody)
             }
 
             else -> {}
@@ -177,12 +192,8 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
         syncInProgress = true
         while (syncInProgress && webSocket != null) {
             delay(5000 + kotlin.random.Random.nextLong(1000))
-            send(WSClockSyncMessage(
-                    type = WSClockSync.TIK,
-                    body = WS_JSON.encodeToJsonElement(
-                        ClockSyncTik(now())
-                    )
-            ))
+            val tikBody = WS_JSON.encodeToJsonElement(ClockSyncTik(now()))
+            send(WSKind.SYNC, WSClockSync.TIK.name.lowercase(), tikBody)
         }
     }
 

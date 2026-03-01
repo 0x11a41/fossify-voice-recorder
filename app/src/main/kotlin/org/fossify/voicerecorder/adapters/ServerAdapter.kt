@@ -6,7 +6,10 @@ import androidx.recyclerview.widget.RecyclerView
 import org.fossify.voicerecorder.databinding.ItemServerBinding
 import org.fossify.voicerecorder.models.Server
 
-class ServerAdapter(private val servers: MutableList<Server>) : RecyclerView.Adapter<ServerAdapter.ServerViewHolder>() {
+class ServerAdapter(
+    private val servers: MutableList<Server>,
+    private val onConnectClick: (Server) -> Unit
+) : RecyclerView.Adapter<ServerAdapter.ServerViewHolder>() {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ServerViewHolder {
         val binding = ItemServerBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -25,6 +28,9 @@ class ServerAdapter(private val servers: MutableList<Server>) : RecyclerView.Ada
             binding.serverName.text = server.name
             binding.serverIp.text = server.ip
             binding.connectButton.text = if (server.isConnected) "Disconnect" else "Connect"
+            binding.connectButton.setOnClickListener {
+                onConnectClick(server)
+            }
         }
     }
 }

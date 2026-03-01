@@ -169,43 +169,23 @@ data class QRData(
 )
 
 @Serializable
-sealed class WSMessage {
-    abstract val kind: WSKind
-}
-
-// ---------- ACTION ----------
-
-@Serializable
-data class WSActionMessage(
-    override val kind: WSKind = WSKind.ACTION,
-    val action: WSActions,
-    val body: WSActionTarget
-) : WSMessage()
-
-// ---------- EVENT ----------
-
-@Serializable
-data class WSEventMessage(
-    override val kind: WSKind = WSKind.EVENT,
-    val event: WSEvents,
+data class WSPayload(
+    val kind: WSKind,
+    @SerialName("msgType")
+    val msgType: String,
     val body: JsonElement? = null
-) : WSMessage()
+)
 
-// ---------- ERROR ----------
+// ---------- Helpers for sending ----------
 
-@Serializable
-data class WSErrorMessage(
-    override val kind: WSKind = WSKind.ERROR,
-    val error: WSErrors,
-    val message: String? = null
-) : WSMessage()
+fun createEventPayload(event: WSEvents, body: JsonElement? = null) = WSPayload(
+    kind = WSKind.EVENT,
+    msgType = event.name.lowercase(),
+    body = body
+)
 
-// ---------- CLOCK SYNC ----------
-
-@Serializable
-data class WSClockSyncMessage(
-    override val kind: WSKind = WSKind.SYNC,
-    val type: WSClockSync,
-    val body: JsonElement
-) : WSMessage()
-
+fun createSyncPayload(type: WSClockSync, body: JsonElement) = WSPayload(
+    kind = WSKind.SYNC,
+    msgType = type.name.lowercase(),
+    body = body
+)

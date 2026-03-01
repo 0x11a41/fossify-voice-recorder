@@ -12,6 +12,8 @@ abstract class MyViewPagerFragment(context: Context, attributeSet: AttributeSet)
     ConstraintLayout(context, attributeSet) {
     abstract fun onResume()
 
+    open fun onPause() {}
+
     abstract fun onDestroy()
 
     open fun onLoadingStart() {}
