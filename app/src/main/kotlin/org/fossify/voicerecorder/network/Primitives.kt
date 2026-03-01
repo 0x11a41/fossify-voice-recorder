@@ -4,18 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-const val PROTOCOL_VERSION = "0.7-alpha"
-
-// ===================== REST API Models =====================
-
-@Serializable
-enum class RESTEvents {
-    @SerialName("session_stage")
-    SESSION_STAGE,
-
-    @SerialName("session_staged")
-    SESSION_STAGED
-}
+const val VERSION = "0.72-alpha"
 
 @Serializable
 data class SessionMetadata(
@@ -33,35 +22,18 @@ data class SessionMetadata(
 data class ServerInfo(
     val name: String,
     val ip: String,
-    val version: String = PROTOCOL_VERSION,
+    val version: String = VERSION,
     val activeSessions: Int = 0
 )
-
-@Serializable
-data class SessionStageRequestMsg(
-    val event: RESTEvents = RESTEvents.SESSION_STAGE,
-    val body: SessionMetadata
-)
-
-@Serializable
-data class SessionStageResponseMsg(
-    val event: RESTEvents = RESTEvents.SESSION_STAGED,
-    val body: SessionMetadata
-)
-
-// ===================== WebSocket Enums =====================
 
 @Serializable
 enum class WSKind {
     @SerialName("action")
     ACTION,
-
     @SerialName("event")
     EVENT,
-
     @SerialName("error")
     ERROR,
-
     @SerialName("sync")
     SYNC
 }
@@ -70,19 +42,14 @@ enum class WSKind {
 enum class WSErrors {
     @SerialName("invalid_kind")
     INVALID_KIND,
-
     @SerialName("invalid_event")
     INVALID_EVENT,
-
     @SerialName("invalid_action")
     INVALID_ACTION,
-
     @SerialName("invalid_body")
     INVALID_BODY,
-
     @SerialName("action_not_allowed")
     ACTION_NOT_ALLOWED,
-
     @SerialName("session_not_found")
     SESSION_NOT_FOUND
 }
@@ -91,40 +58,28 @@ enum class WSErrors {
 enum class WSEvents {
     @SerialName("dashboard_init")
     DASHBOARD_INIT,
-
     @SerialName("dashboard_rename")
     DASHBOARD_RENAME,
-
     @SerialName("session_update")
     SESSION_UPDATE,
-
     @SerialName("session_activate")
     SESSION_ACTIVATE,
-
     @SerialName("session_activated")
     SESSION_ACTIVATED,
-
     @SerialName("success")
     SUCCESS,
-
     @SerialName("failed")
     FAILED,
-
     @SerialName("session_state_report")
     SESSION_STATE_REPORT,
-
     @SerialName("started")
     STARTED,
-
     @SerialName("stopped")
     STOPPED,
-
     @SerialName("paused")
     PAUSED,
-
     @SerialName("resumed")
     RESUMED,
-
     @SerialName("dropped")
     DROPPED
 }
@@ -133,22 +88,16 @@ enum class WSEvents {
 enum class WSActions {
     @SerialName("start")
     START,
-
     @SerialName("stop")
     STOP,
-
     @SerialName("pause")
     PAUSE,
-
     @SerialName("resume")
     RESUME,
-
     @SerialName("cancel")
     CANCEL,
-
     @SerialName("drop")
     DROP,
-
     @SerialName("get_state")
     GET_STATE
 }
@@ -157,10 +106,8 @@ enum class WSActions {
 enum class WSClockSync {
     @SerialName("tik")
     TIK,
-
     @SerialName("tok")
     TOK,
-
     @SerialName("sync_report")
     SYNC_REPORT
 }
@@ -169,10 +116,8 @@ enum class WSClockSync {
 enum class SessionStates {
     @SerialName("stopped")
     STOPPED,
-
     @SerialName("running")
     RUNNING,
-
     @SerialName("paused")
     PAUSED
 }
@@ -180,7 +125,9 @@ enum class SessionStates {
 // ===================== WebSocket Message Bodies =====================
 
 @Serializable
-data class ClockSyncTik(val t1: Long)
+data class ClockSyncTik(
+    val t1: Long
+)
 
 @Serializable
 data class ClockSyncTok(
@@ -220,8 +167,6 @@ data class QRData(
     val name: String,
     val ip: String
 )
-
-// ===================== WebSocket Message Hierarchy =====================
 
 @Serializable
 sealed class WSMessage {
@@ -263,3 +208,4 @@ data class WSClockSyncMessage(
     val type: WSClockSync,
     val body: JsonElement
 ) : WSMessage()
+
