@@ -36,6 +36,7 @@ lifecycle = "2.10.0"
 appcompat = "1.7.1"
 espresso = "3.7.0"
 junit = "4.13.2"
+zxing = "4.3.0"
 
 [libraries]
 #AndroidX
@@ -69,6 +70,7 @@ lifecycle-viewmodel = { module = "androidx.lifecycle:lifecycle-viewmodel-ktx", v
 # Testing
 junit4 = { module = "junit:junit", version.ref = "junit" }
 espresso-core = { module = "androidx.test.espresso:espresso-core", version.ref = "espresso" }
+zxing-android-embedded = { module = "com.journeyapps:zxing-android-embedded", version.ref = "zxing" }
 
 [plugins]
 android = { id = "com.android.application", version.ref = "gradlePlugins-agp" }

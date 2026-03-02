@@ -8,6 +8,7 @@ import androidx.viewpager.widget.PagerAdapter
 import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.activities.SimpleActivity
 import org.fossify.voicerecorder.fragments.MyViewPagerFragment
+import org.fossify.voicerecorder.fragments.NetworkFragment
 import org.fossify.voicerecorder.fragments.PlayerFragment
 import org.fossify.voicerecorder.fragments.TrashFragment
 
@@ -36,6 +37,7 @@ class ViewPagerAdapter(
 
     override fun destroyItem(container: ViewGroup, position: Int, item: Any) {
         container.removeView(item as View)
+        fragments.remove(position)
     }
 
     override fun getCount() = if (showRecycleBin) 4 else 3
@@ -44,13 +46,13 @@ class ViewPagerAdapter(
 
     fun onResume() {
         for (i in 0 until fragments.size) {
-            fragments[i].onResume()
+            fragments.valueAt(i).onResume()
         }
     }
 
     fun onDestroy() {
         for (i in 0 until fragments.size) {
-            fragments[i].onDestroy()
+            fragments.valueAt(i).onDestroy()
         }
     }
 
@@ -66,5 +68,9 @@ class ViewPagerAdapter(
         if (showRecycleBin) {
             (fragments[3] as? TrashFragment)?.onSearchTextChanged(text)
         }
+    }
+
+    fun onQrCodeScanned(content: String) {
+        (fragments[2] as? NetworkFragment)?.onQrCodeScanned(content)
     }
 }

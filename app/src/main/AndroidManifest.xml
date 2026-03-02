@@ -110,6 +110,11 @@
             android:label="@string/customize_colors"
             android:parentActivityName=".activities.SettingsActivity" />
 
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullSensor"
+            tools:replace="android:screenOrientation" />
+
         <service
             android:name=".services.RecorderService"
             android:exported="false"

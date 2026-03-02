@@ -14,6 +14,7 @@
     <string name="player">Player</string>
     <string name="network">Network</string>
     <string name="rename">Rename</string>
+    <string name="scan_qr_code">Scan QR Code</string>
     <!-- Confirmation dialog -->
     <string name="discard_recording">Discard recording</string>
     <string name="discard_recording_confirmation">Are you sure you want to discard the current recording? This cannot be undone.</string>

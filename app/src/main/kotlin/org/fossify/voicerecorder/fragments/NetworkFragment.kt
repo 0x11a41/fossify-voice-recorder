@@ -11,7 +11,10 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.AppCompatEditText
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.google.zxing.integration.android.IntentIntegrator
 import kotlinx.coroutines.launch
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import org.fossify.commons.extensions.applyColorFilter
 import org.fossify.commons.extensions.getProperPrimaryColor
 import org.fossify.commons.extensions.getProperTextColor
@@ -95,6 +98,10 @@ class NetworkFragment(context: Context, attributeSet: AttributeSet) : MyViewPage
 
         binding.editIcon.setOnClickListener {
             showRenameDialog()
+        }
+
+        binding.qrIcon.setOnClickListener {
+            startQrScanner()
         }
 
         refreshServers()
@@ -225,6 +232,48 @@ class NetworkFragment(context: Context, attributeSet: AttributeSet) : MyViewPage
             binding.serversList.visibility = View.VISIBLE
         }
         serverAdapter.notifyDataSetChanged()
+    }
+
+    private fun startQrScanner() {
+        val activity = context as? AppCompatActivity ?: return
+        IntentIntegrator(activity)
+            .setOrientationLocked(false)
+            .setDesiredBarcodeFormats(IntentIntegrator.QR_CODE)
+            .setPrompt(context.getString(R.string.scan_qr_code))
+            .setBeepEnabled(false)
+            .initiateScan()
+    }
+
+    fun onQrCodeScanned(content: String) {
+        val qrJson = Json {
+            ignoreUnknownKeys = true
+            isLenient = true
+        }
+        
+        // Handle Python-style single quoted JSON if necessary
+        val normalizedContent = if (content.trim().startsWith("{") && content.contains("'")) {
+            content.replace("'", "\"")
+        } else {
+            content
+        }
+
+        try {
+            val qrData = qrJson.decodeFromString<QRData>(normalizedContent)
+            if (qrData.type == "vocal_link_server") {
+                val server = Server(qrData.name, qrData.ip, qrData.port, false)
+                // Add to list if not present, then connect
+                val existing = servers.find { it.ip == server.ip && it.port == server.port }
+                if (existing == null) {
+                    servers.add(server)
+                }
+                updateServersUI()
+                toggleConnection(existing ?: server)
+            } else {
+                Toast.makeText(context, "Invalid QR Code type", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Toast.makeText(context, "Failed to parse QR Code: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
     }
 
     override fun onResume() {

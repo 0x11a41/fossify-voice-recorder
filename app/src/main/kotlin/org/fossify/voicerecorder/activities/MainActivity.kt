@@ -7,6 +7,7 @@ import android.provider.MediaStore
 import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.content.res.AppCompatResources
+import com.google.zxing.integration.android.IntentIntegrator
 import me.grantland.widget.AutofitHelper
 import org.fossify.commons.extensions.appLaunched
 import org.fossify.commons.extensions.checkAppSideloading
@@ -240,7 +241,7 @@ class MainActivity : SimpleActivity() {
         )
 
         binding.viewPager.adapter = ViewPagerAdapter(this, config.useRecycleBin)
-        binding.viewPager.offscreenPageLimit = 2
+        binding.viewPager.offscreenPageLimit = 3
         binding.viewPager.onPageChangeListener {
             binding.mainTabsHolder.getTabAt(it)?.select()
             (binding.viewPager.adapter as ViewPagerAdapter).finishActMode()
@@ -318,6 +319,17 @@ class MainActivity : SimpleActivity() {
     }
 
     private fun isThirdPartyIntent() = intent?.action == MediaStore.Audio.Media.RECORD_SOUND_ACTION
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        val result = IntentIntegrator.parseActivityResult(requestCode, resultCode, data)
+        if (result != null) {
+            if (result.contents != null) {
+                getPagerAdapter()?.onQrCodeScanned(result.contents)
+            }
+        } else {
+            super.onActivityResult(requestCode, resultCode, data)
+        }
+    }
 
     @Suppress("unused")
     @Subscribe(threadMode = ThreadMode.MAIN)

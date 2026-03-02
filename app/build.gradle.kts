@@ -154,6 +154,7 @@ dependencies {
     implementation(libs.appcompat)
     implementation(libs.lifecycle.runtime)
     implementation(libs.lifecycle.viewmodel)
+    implementation(libs.zxing.android.embedded)
     testImplementation(libs.junit4)
     androidTestImplementation(libs.espresso.core)
 }
