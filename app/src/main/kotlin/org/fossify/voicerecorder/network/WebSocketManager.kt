@@ -29,10 +29,10 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
     var onDisconnected: (() -> Unit)? = null
 
     // Action Callbacks
-    var onStart: (() -> Unit)? = null
-    var onStop: (() -> Unit)? = null
-    var onPause: (() -> Unit)? = null
-    var onResume: (() -> Unit)? = null
+    var onStart: ((Long?) -> Unit)? = null
+    var onStop: ((Long?) -> Unit)? = null
+    var onPause: ((Long?) -> Unit)? = null
+    var onResume: ((Long?) -> Unit)? = null
     var onCancel: (() -> Unit)? = null
     var onGetState: (() -> Unit)? = null
 
@@ -75,7 +75,7 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
                     }
                     WSKind.ACTION -> {
                         val action = try { WSActions.valueOf(payload.msgType.uppercase()) } catch (_: Exception) { null }
-                        if (action != null) handleAction(action)
+                        if (action != null) handleAction(action, payload.body)
                     }
                     WSKind.ERROR -> {
                         val error = try { WSErrors.valueOf(payload.msgType.uppercase()) } catch (_: Exception) { null }
@@ -101,21 +101,21 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
 
     // ---------- Send ----------
 
-    private suspend fun sendSessionActivation() {
+    private fun sendSessionActivation() {
         sendEvent(WSEvents.SESSION_ACTIVATE, sessionId)
     }
 
-    suspend fun sendAction(action: WSActions, id: String, triggerTime: Long? = null) {
+    fun sendAction(action: WSActions, id: String, triggerTime: Long? = null) {
         val body = WS_JSON.encodeToJsonElement(WSActionTarget(id, triggerTime))
         send(WSKind.ACTION, action.name.lowercase(), body)
     }
 
-    suspend fun sendStateReport(state: SessionStates, duration: Int) {
+    fun sendStateReport(state: SessionStates, duration: Int) {
         val body = WS_JSON.encodeToJsonElement(StateReport(sessionId, state, duration))
         send(WSKind.EVENT, WSEvents.SESSION_STATE_REPORT.name.lowercase(), body)
     }
 
-    suspend fun sendEvent(event: WSEvents, id: String) {
+    fun sendEvent(event: WSEvents, id: String) {
         val body = WS_JSON.encodeToJsonElement(WSEventTarget(id))
         send(WSKind.EVENT, event.name.lowercase(), body)
     }
@@ -155,12 +155,20 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
         }
     }
 
-    private fun handleAction(action: WSActions) {
+    private fun handleAction(action: WSActions, body: JsonElement?) {
+        val target = body?.let { 
+            try { WS_JSON.decodeFromJsonElement<WSActionTarget>(it) } catch (_: Exception) { null }
+        }
+
+        if (target != null && target.id != BROADCAST && target.id != sessionId) {
+            return
+        }
+
         when (action) {
-            WSActions.START -> onStart?.invoke()
-            WSActions.STOP -> onStop?.invoke()
-            WSActions.PAUSE -> onPause?.invoke()
-            WSActions.RESUME -> onResume?.invoke()
+            WSActions.START -> onStart?.invoke(target?.triggerTime)
+            WSActions.STOP -> onStop?.invoke(target?.triggerTime)
+            WSActions.PAUSE -> onPause?.invoke(target?.triggerTime)
+            WSActions.RESUME -> onResume?.invoke(target?.triggerTime)
             WSActions.CANCEL -> onCancel?.invoke()
             WSActions.GET_STATE -> onGetState?.invoke()
             else -> {}
@@ -191,9 +199,9 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
         if (syncInProgress) return
         syncInProgress = true
         while (syncInProgress && webSocket != null) {
-            delay(5000 + kotlin.random.Random.nextLong(1000))
             val tikBody = WS_JSON.encodeToJsonElement(ClockSyncTik(now()))
             send(WSKind.SYNC, WSClockSync.TIK.name.lowercase(), tikBody)
+            delay(5000 + kotlin.random.Random.nextLong(1000))
         }
     }
 

@@ -36,26 +36,40 @@ class NetworkFragment(context: Context, attributeSet: AttributeSet) : MyViewPage
 
     private val activityScope get() = (context as? AppCompatActivity)?.lifecycleScope
 
-    override fun start() {
-        val intent = Intent(context, RecorderService::class.java)
-        context.startService(intent)
-    }
-
-    override fun stop() {
-        val intent = Intent(context, RecorderService::class.java)
-        context.stopService(intent)
-    }
-
-    override fun pause() {
+    override fun start(triggerTime: Long?, theta: Float) {
         val intent = Intent(context, RecorderService::class.java).apply {
-            action = TOGGLE_PAUSE
+            putExtra(EXTRA_TRIGGER_TIME, triggerTime ?: -1L)
+            putExtra(EXTRA_THETA, theta)
+            putExtra(EXTRA_DESIRED_STATUS, RECORDING_RUNNING)
         }
         context.startService(intent)
     }
 
-    override fun resume() {
+    override fun stop(triggerTime: Long?, theta: Float) {
+        val intent = Intent(context, RecorderService::class.java).apply {
+            putExtra(EXTRA_TRIGGER_TIME, triggerTime ?: -1L)
+            putExtra(EXTRA_THETA, theta)
+            putExtra(EXTRA_DESIRED_STATUS, RECORDING_STOPPED)
+        }
+        context.startService(intent)
+    }
+
+    override fun pause(triggerTime: Long?, theta: Float) {
         val intent = Intent(context, RecorderService::class.java).apply {
             action = TOGGLE_PAUSE
+            putExtra(EXTRA_TRIGGER_TIME, triggerTime ?: -1L)
+            putExtra(EXTRA_THETA, theta)
+            putExtra(EXTRA_DESIRED_STATUS, RECORDING_PAUSED)
+        }
+        context.startService(intent)
+    }
+
+    override fun resume(triggerTime: Long?, theta: Float) {
+        val intent = Intent(context, RecorderService::class.java).apply {
+            action = TOGGLE_PAUSE
+            putExtra(EXTRA_TRIGGER_TIME, triggerTime ?: -1L)
+            putExtra(EXTRA_THETA, theta)
+            putExtra(EXTRA_DESIRED_STATUS, RECORDING_RUNNING)
         }
         context.startService(intent)
     }

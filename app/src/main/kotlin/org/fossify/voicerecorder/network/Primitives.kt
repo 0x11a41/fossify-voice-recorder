@@ -5,6 +5,7 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
 const val VERSION = "0.72-alpha"
+const val BROADCAST = "all"
 
 @Serializable
 data class SessionMetadata(

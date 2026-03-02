@@ -20,10 +20,10 @@ import org.fossify.voicerecorder.network.JsonConfig.WS_JSON
 import kotlinx.serialization.json.encodeToJsonElement
 
 interface RecorderController {
-    fun start()
-    fun stop()
-    fun pause()
-    fun resume()
+    fun start(triggerTime: Long? = null, theta: Float = 0f)
+    fun stop(triggerTime: Long? = null, theta: Float = 0f)
+    fun pause(triggerTime: Long? = null, theta: Float = 0f)
+    fun resume(triggerTime: Long? = null, theta: Float = 0f)
     fun cancel()
 }
 
@@ -131,20 +131,20 @@ class SessionManager(
 
         // ---------- dashboard commands → recorder ----------
 
-        ws.onStart = {
-            recorder.start()
+        ws.onStart = { triggerTime ->
+            recorder.start(triggerTime, sessionMetadata?.theta ?: 0f)
         }
 
-        ws.onStop = {
-            recorder.stop()
+        ws.onStop = { triggerTime ->
+            recorder.stop(triggerTime, sessionMetadata?.theta ?: 0f)
         }
 
-        ws.onPause = {
-            recorder.pause()
+        ws.onPause = { triggerTime ->
+            recorder.pause(triggerTime, sessionMetadata?.theta ?: 0f)
         }
 
-        ws.onResume = {
-            recorder.resume()
+        ws.onResume = { triggerTime ->
+            recorder.resume(triggerTime, sessionMetadata?.theta ?: 0f)
         }
 
         ws.onCancel = {

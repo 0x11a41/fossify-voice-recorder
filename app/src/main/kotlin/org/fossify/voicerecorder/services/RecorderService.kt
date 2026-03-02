@@ -10,21 +10,13 @@ import android.content.Context
 import android.content.Intent
 import android.media.MediaScannerConnection
 import android.net.Uri
+import android.os.Handler
 import android.os.IBinder
+import android.os.Looper
 import android.provider.DocumentsContract
 import androidx.core.app.NotificationCompat
 import androidx.core.content.FileProvider
-import org.fossify.commons.extensions.createDocumentUriUsingFirstParentTreeUri
-import org.fossify.commons.extensions.createSAFFileSdk30
-import org.fossify.commons.extensions.getCurrentFormattedDateTime
-import org.fossify.commons.extensions.getDocumentFile
-import org.fossify.commons.extensions.getFilenameFromPath
-import org.fossify.commons.extensions.getLaunchIntent
-import org.fossify.commons.extensions.getMimeType
-import org.fossify.commons.extensions.getParentPath
-import org.fossify.commons.extensions.isPathOnSD
-import org.fossify.commons.extensions.showErrorToast
-import org.fossify.commons.extensions.toast
+import org.fossify.commons.extensions.*
 import org.fossify.commons.helpers.ensureBackgroundThread
 import org.fossify.commons.helpers.isRPlus
 import org.fossify.voicerecorder.BuildConfig
@@ -32,15 +24,7 @@ import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.activities.SplashActivity
 import org.fossify.voicerecorder.extensions.config
 import org.fossify.voicerecorder.extensions.updateWidgets
-import org.fossify.voicerecorder.helpers.CANCEL_RECORDING
-import org.fossify.voicerecorder.helpers.EXTENSION_MP3
-import org.fossify.voicerecorder.helpers.GET_RECORDER_INFO
-import org.fossify.voicerecorder.helpers.RECORDER_RUNNING_NOTIF_ID
-import org.fossify.voicerecorder.helpers.RECORDING_PAUSED
-import org.fossify.voicerecorder.helpers.RECORDING_RUNNING
-import org.fossify.voicerecorder.helpers.RECORDING_STOPPED
-import org.fossify.voicerecorder.helpers.STOP_AMPLITUDE_UPDATE
-import org.fossify.voicerecorder.helpers.TOGGLE_PAUSE
+import org.fossify.voicerecorder.helpers.*
 import org.fossify.voicerecorder.models.Events
 import org.fossify.voicerecorder.recorder.MediaRecorderWrapper
 import org.fossify.voicerecorder.recorder.Mp3Recorder
@@ -67,17 +51,38 @@ class RecorderService : Service() {
     private var amplitudeTimer = Timer()
     private var recorder: Recorder? = null
 
+    private val handler = Handler(Looper.getMainLooper())
+    private var pendingAction: Runnable? = null
+
     override fun onBind(intent: Intent?): IBinder? = null
 
-    override fun onStartCommand(intent: Intent, flags: Int, startId: Int): Int {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
+        if (intent == null) {
+            return START_NOT_STICKY
+        }
 
         when (intent.action) {
             GET_RECORDER_INFO -> broadcastRecorderInfo()
             STOP_AMPLITUDE_UPDATE -> amplitudeTimer.cancel()
-            TOGGLE_PAUSE -> togglePause()
+            TOGGLE_PAUSE -> {
+                val triggerTime = intent.getLongExtra(EXTRA_TRIGGER_TIME, -1L)
+                val theta = intent.getFloatExtra(EXTRA_THETA, 0f)
+                val desiredStatus = intent.getIntExtra(EXTRA_DESIRED_STATUS, -1)
+                togglePauseDelayed(triggerTime, theta, desiredStatus)
+            }
             CANCEL_RECORDING -> cancelRecording()
-            else -> startRecording()
+            else -> {
+                val triggerTime = intent.getLongExtra(EXTRA_TRIGGER_TIME, -1L)
+                val theta = intent.getFloatExtra(EXTRA_THETA, 0f)
+                val desiredStatus = intent.getIntExtra(EXTRA_DESIRED_STATUS, -1)
+                
+                if (desiredStatus == RECORDING_STOPPED) {
+                    stopRecordingDelayed(triggerTime, theta)
+                } else {
+                    startRecordingDelayed(triggerTime, theta)
+                }
+            }
         }
 
         return START_NOT_STICKY
@@ -85,9 +90,95 @@ class RecorderService : Service() {
 
     override fun onDestroy() {
         super.onDestroy()
+        cancelPendingAction()
         stopRecording()
         isRunning = false
         updateWidgets(false)
+    }
+
+    private fun startRecordingDelayed(triggerTime: Long, theta: Float) {
+        if (status != RECORDING_STOPPED || pendingAction != null) {
+            return
+        }
+
+        if (triggerTime == -1L) {
+            startRecording()
+            return
+        }
+
+        val localNow = System.currentTimeMillis()
+        val serverNow = localNow + theta
+        val delay = (triggerTime - serverNow).toLong()
+
+        if (delay <= 0) {
+            startRecording()
+        } else {
+            val actualDelay = if (delay > 10000) 10000L else delay
+            cancelPendingAction()
+            val runnable = Runnable {
+                pendingAction = null
+                startRecording()
+            }
+            pendingAction = runnable
+            handler.postDelayed(runnable, actualDelay)
+        }
+    }
+
+    private fun stopRecordingDelayed(triggerTime: Long, theta: Float) {
+        if (status == RECORDING_STOPPED) {
+            return
+        }
+
+        if (triggerTime == -1L) {
+            stopRecording()
+            return
+        }
+
+        val localNow = System.currentTimeMillis()
+        val serverNow = localNow + theta
+        val delay = (triggerTime - serverNow).toLong()
+
+        if (delay <= 0) {
+            stopRecording()
+        } else {
+            val actualDelay = if (delay > 10000) 10000L else delay
+            cancelPendingAction()
+            val runnable = Runnable {
+                pendingAction = null
+                stopRecording()
+            }
+            pendingAction = runnable
+            handler.postDelayed(runnable, actualDelay)
+        }
+    }
+
+    private fun togglePauseDelayed(triggerTime: Long, theta: Float, desiredStatus: Int) {
+        if (triggerTime == -1L) {
+            togglePause(desiredStatus)
+            return
+        }
+
+        val localNow = System.currentTimeMillis()
+        val serverNow = localNow + theta
+        val delay = (triggerTime - serverNow).toLong()
+
+        if (delay <= 0) {
+            togglePause(desiredStatus)
+        } else {
+            val actualDelay = if (delay > 10000) 10000L else delay
+            cancelPendingAction()
+            val runnable = Runnable {
+                pendingAction = null
+                togglePause(desiredStatus)
+            }
+            pendingAction = runnable
+            handler.postDelayed(runnable, actualDelay)
+        }
+    }
+
+    private fun cancelPendingAction() {
+        pendingAction?.let { handler.removeCallbacks(it) }
+        pendingAction = null
     }
 
     // mp4 output format with aac encoding should produce good enough m4a files according to https://stackoverflow.com/a/33054794/1967672
@@ -95,7 +186,7 @@ class RecorderService : Service() {
     private fun startRecording() {
         isRunning = true
         updateWidgets(true)
-        if (status == RECORDING_RUNNING) {
+        if (status != RECORDING_STOPPED) {
             return
         }
 
@@ -153,6 +244,7 @@ class RecorderService : Service() {
     }
 
     private fun stopRecording() {
+        cancelPendingAction()
         durationTimer.cancel()
         amplitudeTimer.cancel()
         status = RECORDING_STOPPED
@@ -182,6 +274,7 @@ class RecorderService : Service() {
     }
 
     private fun cancelRecording() {
+        cancelPendingAction()
         durationTimer.cancel()
         amplitudeTimer.cancel()
         status = RECORDING_STOPPED
@@ -220,14 +313,25 @@ class RecorderService : Service() {
     }
 
     @SuppressLint("NewApi")
-    private fun togglePause() {
+    private fun togglePause(desiredStatus: Int = -1) {
         try {
-            if (status == RECORDING_RUNNING) {
-                recorder?.pause()
-                status = RECORDING_PAUSED
-            } else if (status == RECORDING_PAUSED) {
-                recorder?.resume()
-                status = RECORDING_RUNNING
+            if (desiredStatus != -1) {
+                if (status == desiredStatus) return
+                if (desiredStatus == RECORDING_PAUSED && status == RECORDING_RUNNING) {
+                    recorder?.pause()
+                    status = RECORDING_PAUSED
+                } else if (desiredStatus == RECORDING_RUNNING && status == RECORDING_PAUSED) {
+                    recorder?.resume()
+                    status = RECORDING_RUNNING
+                }
+            } else {
+                if (status == RECORDING_RUNNING) {
+                    recorder?.pause()
+                    status = RECORDING_PAUSED
+                } else if (status == RECORDING_PAUSED) {
+                    recorder?.resume()
+                    status = RECORDING_RUNNING
+                }
             }
             broadcastStatus()
             startForeground(RECORDER_RUNNING_NOTIF_ID, showNotification())
