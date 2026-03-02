@@ -16,6 +16,8 @@ import java.net.Inet4Address
 import java.net.NetworkInterface
 import kotlin.text.lowercase
 import kotlin.text.startsWith
+import org.fossify.voicerecorder.network.JsonConfig.WS_JSON
+import kotlinx.serialization.json.encodeToJsonElement
 
 interface RecorderController {
     fun start()
@@ -33,7 +35,8 @@ class SessionManager(
     private val restClient = RestClient()
     private val discovery = ServerDiscovery(context)
     private val ws = WebSocketManager(scope)
-    private var sessionMetadata: SessionMetadata? = null
+    var sessionMetadata: SessionMetadata? = null
+        private set
     var serverBaseUrl: String? = null
 
     @Volatile private var internalState: SessionStates = SessionStates.STOPPED
@@ -196,7 +199,7 @@ class SessionManager(
     // STATE REPORTING
     // --------------------------------------------------
 
-    private fun reportStateChange(state: SessionStates) {
+    fun reportStateChange(state: SessionStates) {
         val event = when (state) {
             SessionStates.RUNNING -> WSEvents.STARTED
             SessionStates.PAUSED -> WSEvents.PAUSED
@@ -211,7 +214,7 @@ class SessionManager(
         }
     }
 
-    private fun reportResumed() {
+    fun reportResumed() {
         scope.launch {
             sessionMetadata?.id?.let { id ->
                 ws.sendEvent(WSEvents.RESUMED, id)
@@ -262,7 +265,8 @@ class SessionManager(
             "$manufacturer $model".replaceFirstChar { it.uppercase() }
         }
     }
-    private fun getLocalIp(): String {
+    
+    internal fun getLocalIp(): String {
         return try {
             val interfaces = NetworkInterface.getNetworkInterfaces()
             for (ni in interfaces) {
@@ -288,10 +292,27 @@ class SessionManager(
         }
     }
 
-    private fun getUserName(): String {
+    internal fun getUserName(): String {
         val prefs = context.getSharedPreferences("m_recorder_prefs", Context.MODE_PRIVATE)
         val defaultName = "User ${Build.MODEL.takeLast(4)}"
         return prefs.getString("display_name", null) ?: defaultName
+    }
+
+    internal fun setUserName(name: String) {
+        val prefs = context.getSharedPreferences("m_recorder_prefs", Context.MODE_PRIVATE)
+        prefs.edit().putString("display_name", name).apply()
+        
+        val currentMeta = sessionMetadata ?: return
+        val newMeta = currentMeta.copy(name = name)
+        sessionMetadata = newMeta
+        
+        scope.launch {
+            ws.send(
+                WSKind.EVENT,
+                WSEvents.SESSION_UPDATE.name.lowercase(),
+                WS_JSON.encodeToJsonElement(newMeta)
+            )
+        }
     }
 
     companion object {

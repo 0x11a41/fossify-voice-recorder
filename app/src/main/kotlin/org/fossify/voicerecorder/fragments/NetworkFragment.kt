@@ -1,14 +1,23 @@
 package org.fossify.voicerecorder.fragments
 
+import android.animation.ObjectAnimator
 import android.content.Context
 import android.content.Intent
 import android.util.AttributeSet
 import android.view.View
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.AppCompatEditText
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import kotlinx.coroutines.launch
+import org.fossify.commons.extensions.applyColorFilter
+import org.fossify.commons.extensions.getProperPrimaryColor
+import org.fossify.commons.extensions.getProperTextColor
+import org.fossify.commons.extensions.setupDialogStuff
+import org.fossify.commons.extensions.showKeyboard
+import org.fossify.voicerecorder.R
 import org.fossify.voicerecorder.adapters.ServerAdapter
 import org.fossify.voicerecorder.databinding.FragmentNetworkBinding
 import org.fossify.voicerecorder.models.Server
@@ -63,7 +72,13 @@ class NetworkFragment(context: Context, attributeSet: AttributeSet) : MyViewPage
         if (scope != null) {
             sessionManager = SessionManager(context, scope, this)
             setupSessionManager()
+            
+            // Set initial name and IP
+            val sm = sessionManager!!
+            updateHeader(sm.getUserName(), sm.getLocalIp())
         }
+
+        setupColors()
 
         serverAdapter = ServerAdapter(servers) { server ->
             toggleConnection(server)
@@ -78,7 +93,53 @@ class NetworkFragment(context: Context, attributeSet: AttributeSet) : MyViewPage
             refreshServers()
         }
 
+        binding.editIcon.setOnClickListener {
+            showRenameDialog()
+        }
+
         refreshServers()
+    }
+
+    private fun setupColors() {
+        val textColor = context.getProperTextColor()
+        binding.userName.setTextColor(textColor)
+        binding.ipAddress.setTextColor(textColor)
+        binding.noServersFound.setTextColor(textColor)
+        
+        val primaryColor = context.getProperPrimaryColor()
+        binding.refreshIcon.applyColorFilter(primaryColor)
+        binding.qrIcon.applyColorFilter(primaryColor)
+        binding.editIcon.applyColorFilter(primaryColor)
+    }
+
+    private fun updateHeader(name: String, ip: String) {
+        binding.userName.text = name
+        binding.ipAddress.text = ip
+    }
+
+    private fun showRenameDialog() {
+        val activity = context as? AppCompatActivity ?: return
+        val sm = sessionManager ?: return
+        val currentName = sm.getUserName()
+        
+        val editText = AppCompatEditText(context).apply {
+            setText(currentName)
+            setSelection(currentName.length)
+        }
+
+        val builder = AlertDialog.Builder(context)
+            .setPositiveButton(org.fossify.commons.R.string.ok) { _, _ ->
+                val newName = editText.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    sm.setUserName(newName)
+                    updateHeader(newName, sm.getLocalIp())
+                }
+            }
+            .setNegativeButton(org.fossify.commons.R.string.cancel, null)
+
+        activity.setupDialogStuff(editText, builder, R.string.rename) {
+            activity.showKeyboard(editText)
+        }
     }
 
     private fun toggleConnection(server: Server) {
@@ -89,13 +150,16 @@ class NetworkFragment(context: Context, attributeSet: AttributeSet) : MyViewPage
             serverAdapter.notifyDataSetChanged()
         } else {
             // Disconnect from any other server first
-            servers.forEach { if (it.isConnected) it.isConnected = false }
+            servers.forEach { if (it.isConnected) {
+                it.isConnected = false
+            } }
             sm.disconnect()
 
             sm.serverBaseUrl = "http://${server.ip}:${server.port}"
             activityScope?.launch {
                 if (sm.initialize()) {
-                    server.isConnected = true
+                    // Force update UI: only one server should be connected
+                    servers.forEach { it.isConnected = (it.ip == server.ip && it.port == server.port) }
                     serverAdapter.notifyDataSetChanged()
                 } else {
                     server.isConnected = false
@@ -115,22 +179,40 @@ class NetworkFragment(context: Context, attributeSet: AttributeSet) : MyViewPage
             onSessionReady = { meta ->
                 activityScope?.launch {
                     Toast.makeText(context, "Connected to ${meta.name}", Toast.LENGTH_SHORT).show()
+                    updateHeader(meta.name, meta.ip)
                 }
             }
         }
     }
 
     private fun refreshServers() {
+        val sm = sessionManager ?: return
+        
+        // Disable button and start rotation animation
+        binding.refreshIcon.isEnabled = false
+        val animator = ObjectAnimator.ofFloat(binding.refreshIcon, View.ROTATION, 0f, 360f).apply {
+            duration = 1000
+            repeatCount = ObjectAnimator.INFINITE
+            start()
+        }
+
         activityScope?.launch {
-            val discovered = sessionManager?.discoverServers() ?: emptyList()
-            // Keep connection status if the server is still discovered
-            val connectedIp = servers.find { it.isConnected }?.ip
-            
-            servers.clear()
-            servers.addAll(discovered.map { 
-                Server(it.name, it.ip, it.port, it.ip == connectedIp) 
-            })
-            updateServersUI()
+            try {
+                val discovered = sm.discoverServers()
+                // Keep connection status if the server is still discovered
+                val connectedIp = servers.find { it.isConnected }?.ip
+                
+                servers.clear()
+                servers.addAll(discovered.map { 
+                    Server(it.name, it.ip, it.port, it.ip == connectedIp) 
+                })
+                updateServersUI()
+            } finally {
+                // Stop animation and re-enable button
+                animator.cancel()
+                binding.refreshIcon.rotation = 0f
+                binding.refreshIcon.isEnabled = true
+            }
         }
     }
 
@@ -146,7 +228,7 @@ class NetworkFragment(context: Context, attributeSet: AttributeSet) : MyViewPage
     }
 
     override fun onResume() {
-        // State tracking is now handled by SessionManager via EventBus in the background
+        setupColors()
     }
 
     override fun onDestroy() {

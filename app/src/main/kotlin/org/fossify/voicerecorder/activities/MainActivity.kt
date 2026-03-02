@@ -337,4 +337,5 @@ class MainActivity : SimpleActivity() {
     fun recordingStatusChanged(event: Events.RecordingStatus) {
         // Just for safety, ensure NetworkFragment or others can react
     }
+
 }

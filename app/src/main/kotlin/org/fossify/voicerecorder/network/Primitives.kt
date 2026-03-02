@@ -165,7 +165,8 @@ data class StateReport(
 data class QRData(
     val type: String = "vocal_link_server",
     val name: String,
-    val ip: String
+    val ip: String,
+    val port: Int
 )
 
 @Serializable

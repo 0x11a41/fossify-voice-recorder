@@ -120,7 +120,7 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
         send(WSKind.EVENT, event.name.lowercase(), body)
     }
 
-    private fun send(kind: WSKind, msgType: String, body: JsonElement? = null) {
+    internal fun send(kind: WSKind, msgType: String, body: JsonElement? = null) {
         try {
             val payload = WSPayload(kind, msgType, body)
             webSocket?.send(WS_JSON.encodeToString(payload))
