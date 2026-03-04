@@ -46,7 +46,7 @@ class Mp3Recorder(val context: Context) : Recorder {
         minBufferSize * 2
     )
 
-    init { // enable noise supression
+    init { // LAYER 1: Enable built-in hardware noise suppression
         val sessionId = audioRecord.audioSessionId
         if (NoiseSuppressor.isAvailable()) {
             noiseSuppressor = NoiseSuppressor.create(sessionId)
@@ -95,10 +95,13 @@ class Mp3Recorder(val context: Context) : Recorder {
                 if (!isPaused.get()) {
                     val count = audioRecord.read(rawData, 0, minBufferSize)
                     if (count > 0) {
-                        val encoded = androidLame!!.encode(rawData, rawData, count, mp3buffer)
+                        // LAYER 2: Apply manual DSP Noise Gate before encoding
+                        val processedData = applyNoiseGate(rawData, count)
+                        
+                        val encoded = androidLame!!.encode(processedData, processedData, count, mp3buffer)
                         if (encoded > 0) {
                             try {
-                                updateAmplitude(rawData)
+                                updateAmplitude(processedData)
                                 outputStream!!.write(mp3buffer, 0, encoded)
                             } catch (e: IOException) {
                                 e.printStackTrace()
@@ -108,6 +111,17 @@ class Mp3Recorder(val context: Context) : Recorder {
                 }
             }
         }
+    }
+
+    private fun applyNoiseGate(data: ShortArray, count: Int): ShortArray {
+        // Simple DSP: Silences audio below a certain volume threshold (noise floor)
+        val threshold = 100 
+        for (i in 0 until count) {
+            if (abs(data[i].toInt()) < threshold) {
+                data[i] = 0
+            }
+        }
+        return data
     }
 
     override fun stop() {
