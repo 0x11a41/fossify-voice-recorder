@@ -4,7 +4,8 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-const val VERSION = "0.72-alpha"
+const val VERSION = "v0.81-alpha"
+const val PORT = 6210
 const val BROADCAST = "all"
 
 @Serializable
@@ -82,7 +83,13 @@ enum class WSEvents {
     @SerialName("resumed")
     RESUMED,
     @SerialName("dropped")
-    DROPPED
+    DROPPED,
+    @SerialName("rec_stage")
+    REC_STAGE,
+    @SerialName("rec_staged")
+    REC_STAGED,
+    @SerialName("rec_amend")
+    REC_AMEND
 }
 
 @Serializable
@@ -100,7 +107,19 @@ enum class WSActions {
     @SerialName("drop")
     DROP,
     @SerialName("get_state")
-    GET_STATE
+    GET_STATE,
+    @SerialName("start_all")
+    START_ALL,
+    @SerialName("stop_all")
+    STOP_ALL,
+    @SerialName("pause_all")
+    PAUSE_ALL,
+    @SerialName("resume_all")
+    RESUME_ALL,
+    @SerialName("cancel_all")
+    CANCEL_ALL,
+    @SerialName("rec_rename")
+    REC_RENAME
 }
 
 @Serializable
@@ -163,11 +182,71 @@ data class StateReport(
 )
 
 @Serializable
+data class RecStageInfo(
+    val sessionId: String,
+    val recName: String,
+    val duration: Int,
+    val sizeBytes: Long
+)
+
+@Serializable
+enum class RecStates {
+    @SerialName("ok")
+    OK,
+    @SerialName("na")
+    NA,
+    @SerialName("working")
+    WORKING
+}
+
+@Serializable
+data class RecMetadata(
+    val rid: String,
+    val recName: String,
+    val sessionId: String,
+    val speaker: String,
+    val device: String,
+    val duration: Float,
+    val sizeBytes: Long,
+    val createdAt: Long,
+    val original: RecStates = RecStates.NA,
+    val enhanced: RecStates = RecStates.NA,
+    val transcript: RecStates = RecStates.NA,
+    val merged: List<String>? = null
+)
+
+@Serializable
+data class TranscriptSegment(
+    val start: Float,
+    val end: Float,
+    val text: String
+)
+
+@Serializable
+data class TranscriptResult(
+    val rid: String,
+    val language: String,
+    val duration: Float,
+    val segments: List<TranscriptSegment>
+)
+
+@Serializable
+data class MergeRequest(
+    val rids: List<String>
+)
+
+object EnhanceProps {
+    const val AMPLIFY = 1
+    const val REDUCE_NOISE = 2
+    const val STUDIO_FILTER = 4
+}
+
+@Serializable
 data class QRData(
     val type: String = "vocal_link_server",
     val name: String,
     val ip: String,
-    val port: Int
+    val port: Int = PORT
 )
 
 @Serializable

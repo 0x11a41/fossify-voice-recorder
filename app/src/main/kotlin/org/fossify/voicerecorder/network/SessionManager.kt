@@ -2,6 +2,7 @@ package org.fossify.voicerecorder.network
 
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.BatteryManager
 import android.os.Build
 import android.util.Log
@@ -18,6 +19,10 @@ import kotlin.text.lowercase
 import kotlin.text.startsWith
 import org.fossify.voicerecorder.network.JsonConfig.WS_JSON
 import kotlinx.serialization.json.encodeToJsonElement
+import org.fossify.commons.extensions.getFilenameFromPath
+import java.io.File
+import android.provider.OpenableColumns
+import android.media.MediaMetadataRetriever
 
 interface RecorderController {
     fun start(triggerTime: Long? = null, theta: Float = 0f)
@@ -41,10 +46,14 @@ class SessionManager(
 
     @Volatile private var internalState: SessionStates = SessionStates.STOPPED
     @Volatile private var internalDuration: Int = 0
+    private var lastRecordedDuration: Int = 0
 
     var onSessionReady: ((SessionMetadata) -> Unit)? = null
     var onStateChanged: ((SessionStates, Int) -> Unit)? = null
     var onError: ((String) -> Unit)? = null
+
+    // Track pending uploads
+    private val pendingUploads = mutableMapOf<String, Uri>()
 
     init {
         registerBus()
@@ -155,6 +164,21 @@ class SessionManager(
             requestRecorderInfo() // Refresh info before sending
             sendState()
         }
+
+        // ---------- Recording Upload flow ----------
+
+        ws.onRecStaged = { meta ->
+            val uri = pendingUploads.remove(meta.recName)
+            val baseUrl = serverBaseUrl
+            if (uri != null && baseUrl != null) {
+                scope.launch {
+                    val result = restClient.uploadRecording(baseUrl, meta.rid, context, uri)
+                    result.onFailure {
+                        Log.e(TAG, "Upload failed for ${meta.rid}", it)
+                    }
+                }
+            }
+        }
     }
 
     // --------------------------------------------------
@@ -185,14 +209,60 @@ class SessionManager(
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun onRecordingDurationChanged(event: Events.RecordingDuration) {
         internalDuration = event.duration
-        // Periodic duration reports removed per instruction
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun onRecordingCompleted(event: Events.RecordingCompleted) {
+        lastRecordedDuration = internalDuration
         internalState = SessionStates.STOPPED
         internalDuration = 0
         reportStateChange(SessionStates.STOPPED)
+    }
+
+    @Subscribe(threadMode = ThreadMode.MAIN)
+    fun onRecordingSaved(event: Events.RecordingSaved) {
+        val uri = event.uri ?: return
+        val sessionId = sessionMetadata?.id ?: return
+        
+        scope.launch(Dispatchers.IO) {
+            try {
+                // 1. Actual File Name
+                val fileName = context.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+                    val nameIndex = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                    if (cursor.moveToFirst()) cursor.getString(nameIndex) else null
+                } ?: uri.lastPathSegment ?: "recording"
+
+                // 2. Actual Size
+                val fileSize = context.contentResolver.openAssetFileDescriptor(uri, "r")?.use { 
+                    it.length 
+                } ?: 0L
+                
+                // 3. Actual Duration from File
+                val actualDuration = try {
+                    val retriever = MediaMetadataRetriever()
+                    retriever.setDataSource(context, uri)
+                    val time = retriever.extractMetadata(MediaMetadataRetriever.METADATA_KEY_DURATION)
+                    retriever.release()
+                    time?.toLong()?.div(1000)?.toInt() ?: lastRecordedDuration
+                } catch (e: Exception) {
+                    lastRecordedDuration
+                }
+
+                // Track this URI by filename to match it when REC_STAGED arrives
+                pendingUploads[fileName] = uri
+                
+                val info = RecStageInfo(
+                    sessionId = sessionId,
+                    recName = fileName,
+                    duration = actualDuration,
+                    sizeBytes = fileSize
+                )
+                
+                ws.sendRecStage(info)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to stage recording", e)
+            }
+        }
     }
 
     // --------------------------------------------------
@@ -251,6 +321,7 @@ class SessionManager(
         }
         ws.disconnect()
         sessionMetadata = null
+        pendingUploads.clear()
     }
 
     // --------------------------------------------------

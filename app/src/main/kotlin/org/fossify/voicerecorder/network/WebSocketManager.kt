@@ -36,6 +36,9 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
     var onCancel: (() -> Unit)? = null
     var onGetState: (() -> Unit)? = null
 
+    // Recording Callbacks
+    var onRecStaged: ((RecMetadata) -> Unit)? = null
+
     fun connect(serverUrl: String, sessionId: String, sessionName: String) {
         this.sessionId = sessionId
         this.sessionName = sessionName
@@ -120,6 +123,11 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
         send(WSKind.EVENT, event.name.lowercase(), body)
     }
 
+    fun sendRecStage(info: RecStageInfo) {
+        val body = WS_JSON.encodeToJsonElement(info)
+        send(WSKind.EVENT, WSEvents.REC_STAGE.name.lowercase(), body)
+    }
+
     internal fun send(kind: WSKind, msgType: String, body: JsonElement? = null) {
         try {
             val payload = WSPayload(kind, msgType, body)
@@ -149,6 +157,11 @@ class WebSocketManager(private val scope: CoroutineScope) : WebSocketListener() 
             WSEvents.DROPPED -> {
                 val target = WS_JSON.decodeFromJsonElement<WSEventTarget>(body)
                 onSessionDropped?.invoke(target.id)
+            }
+
+            WSEvents.REC_STAGED -> {
+                val meta = WS_JSON.decodeFromJsonElement<RecMetadata>(body)
+                onRecStaged?.invoke(meta)
             }
 
             else -> {}
