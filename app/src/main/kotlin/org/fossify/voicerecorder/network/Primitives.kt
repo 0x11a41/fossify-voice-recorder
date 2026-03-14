@@ -4,7 +4,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonElement
 
-const val VERSION = "v0.81-alpha"
+const val VERSION = "v0.83-alpha"
 const val PORT = 6210
 const val BROADCAST = "all"
 
@@ -21,11 +21,42 @@ data class SessionMetadata(
 )
 
 @Serializable
-data class ServerInfo(
+enum class AudioFormat {
+    @SerialName(".m4a") M4A,
+    @SerialName(".mp3") MP3,
+    @SerialName(".ogg") OGG
+}
+
+@Serializable
+enum class AccentColor {
+    @SerialName("#E7965C") ORANGE,
+    @SerialName("#5C96E7") BLUE,
+    @SerialName("#5CE796") GREEN,
+    @SerialName("#965CE7") PURPLE,
+    @SerialName("#4A5568") GRAY
+}
+
+@Serializable
+data class ServerConf(
     val name: String,
+    val color: AccentColor = AccentColor.GREEN,
+    val fmt: AudioFormat = AudioFormat.M4A,
+    val whisperModel: String = "small",
+    val noiseStrength: Float = 0.75f,
+    val amplitudeStrength: Int = -18,
+    val filterBassBoost: Float = 6.0f,
+    val airBoost: Float = 4.0f,
+    val compressorThreshold: Float = -20.0f,
+    val compressorRatio: Float = 4.0f,
+    val intends: String = "class EventTriggers:\n    pass"
+)
+
+@Serializable
+data class ServerInfo(
     val ip: String,
     val version: String = VERSION,
-    val activeSessions: Int = 0
+    val activeSessions: Int = 0,
+    val conf: ServerConf
 )
 
 @Serializable
@@ -53,7 +84,11 @@ enum class WSErrors {
     @SerialName("action_not_allowed")
     ACTION_NOT_ALLOWED,
     @SerialName("session_not_found")
-    SESSION_NOT_FOUND
+    SESSION_NOT_FOUND,
+    @SerialName("invalid_extension")
+    INVALID_EXTENSION,
+    @SerialName("item_not_found")
+    ITEM_NOT_FOUND
 }
 
 @Serializable
@@ -117,9 +152,7 @@ enum class WSActions {
     @SerialName("resume_all")
     RESUME_ALL,
     @SerialName("cancel_all")
-    CANCEL_ALL,
-    @SerialName("rec_rename")
-    REC_RENAME
+    CANCEL_ALL
 }
 
 @Serializable
